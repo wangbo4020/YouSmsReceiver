@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">短信通知器</string>
+    <!-- Strings related to login -->
+    <string name="prompt_server">服务器地址</string>
+    <string name="prompt_password">密码</string>
+    <string name="prompt_phone">本机号码</string>
+    <string name="action_sign_in">保存</string>
+</resources>

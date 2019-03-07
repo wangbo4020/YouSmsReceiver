@@ -1,0 +1,14 @@
+build
+GPATH
+GRTAGS
+GTAGS
+*.iml
+*.log
+.vscode
+.gradle
+.meghanada
+/local.properties
+.DS_Store
+/captures
+.externalNativeBuild
+.idea

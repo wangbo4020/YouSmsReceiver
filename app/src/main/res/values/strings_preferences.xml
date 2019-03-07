@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="pref_base_server_key">pref_base_server_key</string>
+    <string name="pref_password_key">pref_password_key</string>
+    <string name="pref_my_phone_key">pref_my_phone_key</string>
+    <string name="pref_exception_key">pref_exception_key</string>
+</resources>
