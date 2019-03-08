@@ -66,13 +66,11 @@ class CoreService : Service() {
 
     }
 
-
     private val mSmsObserver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent?) {
             if (intent == null) return
 
             val extras = intent.extras ?: return
-
 
             val smsObj = extras["pdus"] as Array<ByteArray>
             val createFromPdu = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) (extras["format"] as String).let {
@@ -131,7 +129,7 @@ class CoreService : Service() {
             addAction(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
         })
         Toast.makeText(this, "监听服务已开启", Toast.LENGTH_SHORT).show()
-        Log.i(TAG, "onCreate: $ret 4")
+        Log.i(TAG, "onCreate: $ret")
     }
 
     override fun onBind(intent: Intent?): IBinder? {
