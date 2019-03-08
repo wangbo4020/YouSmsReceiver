@@ -9,10 +9,11 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.example.smssend.ui.delegate.PermissionRequestDelegate
 import com.example.smssend.R
 import com.example.smssend.background.CoreService
 import com.example.smssend.content.AppPreferences
+import com.example.smssend.ui.delegate.PermissionRequestDelegate
+import com.example.smssend.ui.delegate.PermissionRequestDelegate.Companion.PERM_NOTIFICATION_ENABLE
 import com.example.smssend.utils.versionName
 import kotlinx.android.synthetic.main.activity_login.*
 
@@ -57,6 +58,7 @@ class LoginActivity : AppCompatActivity() {
             ) {
                 val message = when (permission) {
                     Manifest.permission.RECEIVE_SMS -> "监听短信"
+                    PERM_NOTIFICATION_ENABLE -> "显示通知"
                     else -> "读取短信"
                 }
                 AlertDialog.Builder(this@LoginActivity)
@@ -75,7 +77,7 @@ class LoginActivity : AppCompatActivity() {
             override fun complete() {
                 startService(Intent(applicationContext, CoreService::class.java))
             }
-        }, Manifest.permission.RECEIVE_SMS)
+        }, Manifest.permission.RECEIVE_SMS, PERM_NOTIFICATION_ENABLE)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.*
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
 import android.provider.Telephony
 import android.telephony.SmsMessage
@@ -20,7 +19,10 @@ import com.example.smssend.content.AppPreferences
 import com.example.smssend.ui.LoginActivity
 import com.example.smssend.utils.messageStack
 import com.example.smssend.utils.versionName
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -34,7 +36,6 @@ class CoreService : Service() {
     }
 
     private var mReported = 0
-    private val mHandler by lazy { Handler() }
 
     private val mNM by lazy { getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager }
     private val mNotification by lazy {
@@ -130,7 +131,6 @@ class CoreService : Service() {
             addAction(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
         })
         Toast.makeText(this, "监听服务已开启", Toast.LENGTH_SHORT).show()
-        mHandler
         Log.i(TAG, "onCreate: $ret 4")
     }
 
