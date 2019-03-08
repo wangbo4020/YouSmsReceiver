@@ -18,10 +18,11 @@ import com.example.smssend.R
 import com.example.smssend.content.AppPreferences
 import com.example.smssend.ui.LoginActivity
 import com.example.smssend.utils.messageStack
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.Executors
 
 
 class CoreService : Service() {
@@ -32,7 +33,6 @@ class CoreService : Service() {
 
     private var mReported = 0
     private val mHandler by lazy { Handler() }
-    private val mExecutor by lazy { Executors.newFixedThreadPool(3) }
 
     private val mNM by lazy { getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager }
     private val mNotification by lazy {
@@ -110,7 +110,7 @@ class CoreService : Service() {
                     return
                 }
 
-                mExecutor.execute {
+                GlobalScope.launch {
 
                     from = from.replace(" ", "")
                     if (from.startsWith("+")) {
@@ -205,6 +205,7 @@ class CoreService : Service() {
         mHandler.post {
             mNM.notify(
                 10086, mNotification
+                    .setTicker(msg)
                     .setContentText(msg)
                     .build()
             )
