@@ -162,8 +162,8 @@ class CoreService : Service() {
                 val conn = URL(url)
                     .openConnection() as HttpURLConnection
 
-                conn.readTimeout = 15 * 1000
-                conn.connectTimeout = 15 * 1000
+                conn.readTimeout = 5 * 1000
+                conn.connectTimeout = 5 * 1000
                 conn.requestMethod = "POST"
                 conn.doInput = true
                 conn.doOutput = true
