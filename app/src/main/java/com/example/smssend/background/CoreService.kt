@@ -19,8 +19,6 @@ import com.example.smssend.content.AppPreferences
 import com.example.smssend.ui.LoginActivity
 import com.example.smssend.utils.messageStack
 import org.json.JSONObject
-import java.io.PrintWriter
-import java.io.StringWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -157,7 +155,7 @@ class CoreService : Service() {
                                 break;
                             }
                         } catch (e: Exception) {
-                            AppPreferences.putString(R.string.pref_exception_key, e.messageStack())
+                            AppPreferences.putString(R.string.pref_exception_key, e.messageStack)
                         }
                     } while (retry++ < 2)
 
