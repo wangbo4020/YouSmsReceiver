@@ -150,41 +150,32 @@ class CoreService : Service() {
 
                             code = conn.responseCode
                             Log.i(TAG, "result: $url >> $code")
+                            conn.disconnect()
                             if (code in 200..299) {
                                 mReported++
                                 AppPreferences.clear(R.string.pref_exception_key)
                                 break;
                             }
-                            conn.disconnect()
                         } catch (e: Exception) {
                             AppPreferences.putString(R.string.pref_exception_key, e.messageStack())
-                        } finally {
-                            if (code == -1) {
-                                mNotification.setContentIntent(
-                                    PendingIntent.getActivity(
-                                        this@CoreService, 1,
-                                        Intent.makeRestartActivityTask(
-                                            ComponentName(this@CoreService, LoginActivity::class.java)
-                                        ).apply {
-                                            putExtra("exception", AppPreferences.getString(R.string.pref_exception_key))
-                                        },
-                                        0
-                                    )
-                                )
-                            } else {
-                                mNotification.setContentIntent(
-                                    PendingIntent.getActivity(
-                                        this@CoreService, 1,
-                                        Intent.makeRestartActivityTask(
-                                            ComponentName(this@CoreService, LoginActivity::class.java)
-                                        ),
-                                        0
-                                    )
-                                )
-                            }
-                            updateMessage("已上报${mReported}条，最近一条结果" + (if (code != -1) code else "异常，点我显示异常"))
                         }
                     } while (retry++ < 2)
+
+                    mNotification.setContentIntent(
+                        PendingIntent.getActivity(
+                            this@CoreService, 1,
+                            Intent.makeRestartActivityTask(
+                                ComponentName(this@CoreService, LoginActivity::class.java)
+                            ).apply {
+                                putExtra("reported", mReported)
+                                if (code == -1) {
+                                    putExtra("exception", AppPreferences.getString(R.string.pref_exception_key))
+                                }
+                            },
+                            0
+                        )
+                    )
+                    updateMessage("已上报${mReported}条，最近一条结果" + (if (code != -1) code else "异常，点我显示异常"))
                 }
             }
         }
