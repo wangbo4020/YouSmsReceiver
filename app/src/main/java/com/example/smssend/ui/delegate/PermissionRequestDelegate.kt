@@ -1,4 +1,4 @@
-package com.example.smssend
+package com.example.smssend.ui.delegate
 
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -85,7 +85,9 @@ open class PermissionRequestDelegate(val requestCode: Int, val activity: Activit
 
         permissions!!.filter {
             when (it) {
-                PERM_NOTIFICATION_ENABLE -> !isNotificationEnabled(context)
+                PERM_NOTIFICATION_ENABLE -> !isNotificationEnabled(
+                    context
+                )
                 "android.permission.PACKAGE_USAGE_STATS" -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && !isStatUsageEnabled(
                     context
                 )
@@ -100,7 +102,8 @@ open class PermissionRequestDelegate(val requestCode: Int, val activity: Activit
                 callback?.complete()
                 callback = null
             } else {
-                callback?.alert(this, it[0], object : PermissionAlertHandler {
+                callback?.alert(this, it[0], object :
+                    PermissionAlertHandler {
                     override fun ok() {
                         startRequestPermission(it[0])
                     }

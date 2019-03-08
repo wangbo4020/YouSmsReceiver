@@ -1,4 +1,4 @@
-package com.example.smssend
+package com.example.smssend.ui.delegate
 
 import android.content.Intent
 import android.os.Bundle

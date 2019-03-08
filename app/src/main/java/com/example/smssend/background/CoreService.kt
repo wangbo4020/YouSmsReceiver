@@ -13,13 +13,14 @@ import android.telephony.SmsMessage
 import android.text.TextUtils
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.WorkerThread
 import androidx.core.app.NotificationCompat
 import com.example.smssend.R
 import com.example.smssend.content.AppPreferences
 import com.example.smssend.ui.LoginActivity
 import com.example.smssend.utils.messageStack
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import com.example.smssend.utils.versionName
+import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -29,6 +30,7 @@ class CoreService : Service() {
 
     companion object {
         const val TAG = "CoreService"
+        const val NOTIFICATION_ID = 10086
     }
 
     private var mReported = 0
@@ -59,7 +61,7 @@ class CoreService : Service() {
                     0
                 )
             )
-            .setContentTitle("短信监听器")
+            .setContentTitle("短信监听器v$versionName")
 
     }
 
@@ -68,113 +70,53 @@ class CoreService : Service() {
         override fun onReceive(context: Context, intent: Intent?) {
             if (intent == null) return
 
-            val extras = intent.extras
-            Log.i(TAG, "onReceive: $extras")
+            val extras = intent.extras ?: return
 
-            if (null != extras) {
-                var text = ""
-                var from = ""
-                val smsObj = extras.get("pdus") as Array<ByteArray>
-                for (sms in smsObj) {
-                    val msg = SmsMessage.createFromPdu(sms)
-                    text += msg.displayMessageBody
-                    from = msg.originatingAddress ?: ""
-                    if (msg != null) {
-                        Log.i(
-                            TAG, JSONObject()
-                                .put("originatingAddress", msg.originatingAddress)
-                                .put("displayOriginatingAddress", msg.displayOriginatingAddress)
-                                .put("messageBody", msg.messageBody)
-                                .put("displayMessageBody", msg.displayMessageBody)
-                                .put("serviceCenterAddress", msg.serviceCenterAddress)
-                                .put("indexOnIcc", msg.indexOnIcc)
-                                .put("isCphsMwiMessage", msg.isCphsMwiMessage)
-                                .put("isMWIClearMessage", msg.isMWIClearMessage)
-                                .put("isMWISetMessage", msg.isMWISetMessage)
-                                .put("isMwiDontStore", msg.isMwiDontStore)
-                                .put("isEmail", msg.isEmail)
-                                .put("emailFrom", msg.emailFrom)
-                                .put("emailBody", msg.emailBody)
-                                .put("isReplace", msg.isReplace)
-                                .toString(4)
-                        )
-                    }
-                }
-                Log.i(TAG, "onReceive: $from >> $text")
 
-                val server = AppPreferences.getString(R.string.pref_base_server_key)
-                val password = AppPreferences.getString(R.string.pref_password_key, "")
-                val myPhone = AppPreferences.getString(R.string.pref_my_phone_key, "")
-                if (TextUtils.isEmpty(server)) {
-                    updateMessage("请正确配置上报地址")
-                    return
-                }
+            val smsObj = extras["pdus"] as Array<ByteArray>
+            val createFromPdu = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) (extras["format"] as String).let {
+                fun(sms: ByteArray) = SmsMessage.createFromPdu(sms, it)
+            }
+            else fun(sms: ByteArray) = SmsMessage.createFromPdu(sms)
 
-                GlobalScope.launch {
+            var from = ""
+            val text =
+                smsObj.joinToString { createFromPdu(it).also { from = it.originatingAddress ?: "" }.displayMessageBody }
 
-                    from = from.replace(" ", "")
-                    if (from.startsWith("+")) {
-                        if (from.startsWith("+86")) {
-                            from = from.substring(3)
-                        } else {
-                            from = from.substring(1)
-                        }
-                    }
-                    var code = -1
-                    var retry = 0
+            Log.i(TAG, "onReceive: $from $text")
 
-                    do {
-                        try {
-                            val url = "$server/api/submitmsg/$password/$from/$myPhone"
-                            val conn = URL(url)
-                                .openConnection() as HttpURLConnection
+            val server = AppPreferences.getString(R.string.pref_base_server_key)
+            val password = AppPreferences.getString(R.string.pref_password_key, "")
+            val myPhone = AppPreferences.getString(R.string.pref_my_phone_key, "")
+            if (TextUtils.isEmpty(server)) {
+                updateMessage("请正确配置上报地址")
+                return
+            }
 
-                            conn.readTimeout = 15 * 1000
-                            conn.connectTimeout = 15 * 1000
-                            conn.requestMethod = "POST"
-                            conn.doInput = true
-                            conn.doOutput = true
-                            conn.setRequestProperty("Accept-Charset", "UTF-8")
-                            conn.setRequestProperty("Content-Type", "application/json")
+            GlobalScope.launch(Dispatchers.Main) {
 
-                            val data = JSONObject()
-                                .put("SmsMessage", text).toString().toByteArray()
-                            conn.setRequestProperty("Content-Length", "" + data.size);
+                val code = withContext(Dispatchers.IO) { reportSms(server!!, from, text, myPhone, password) }
 
-                            conn.outputStream.apply {
-                                write(data)
-                                close()
+                var suffix = "最近一条结果"
+
+                mNotification.setContentIntent(
+                    PendingIntent.getActivity(
+                        this@CoreService, 1,
+                        Intent.makeRestartActivityTask(
+                            ComponentName(this@CoreService, LoginActivity::class.java)
+                        ).apply {
+                            putExtra("reported", mReported)
+                            if (code == -1) {
+                                putExtra("exception", AppPreferences.getString(R.string.pref_exception_key))
+                                suffix += "异常，点我显示异常"
+                            } else {
+                                suffix += code.toString()
                             }
-
-                            code = conn.responseCode
-                            Log.i(TAG, "result: $url >> $code")
-                            conn.disconnect()
-                            if (code in 200..299) {
-                                mReported++
-                                AppPreferences.clear(R.string.pref_exception_key)
-                                break;
-                            }
-                        } catch (e: Exception) {
-                            AppPreferences.putString(R.string.pref_exception_key, e.messageStack)
-                        }
-                    } while (retry++ < 2)
-
-                    mNotification.setContentIntent(
-                        PendingIntent.getActivity(
-                            this@CoreService, 1,
-                            Intent.makeRestartActivityTask(
-                                ComponentName(this@CoreService, LoginActivity::class.java)
-                            ).apply {
-                                putExtra("reported", mReported)
-                                if (code == -1) {
-                                    putExtra("exception", AppPreferences.getString(R.string.pref_exception_key))
-                                }
-                            },
-                            0
-                        )
+                        },
+                        0
                     )
-                    updateMessage("已上报${mReported}条，最近一条结果" + (if (code != -1) code else "异常，点我显示异常"))
-                }
+                )
+                updateMessage("已上报${mReported}条，$suffix")
             }
         }
     }
@@ -182,14 +124,14 @@ class CoreService : Service() {
     override fun onCreate() {
         super.onCreate()
 
-        startForeground(10086, mNotification.build())
+        startForeground(NOTIFICATION_ID, mNotification.build())
         val ret = registerReceiver(mSmsObserver, IntentFilter().apply {
             priority = Integer.MAX_VALUE
             addAction(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
         })
         Toast.makeText(this, "监听服务已开启", Toast.LENGTH_SHORT).show()
         mHandler
-        Log.i(TAG, "onCreate: $ret")
+        Log.i(TAG, "onCreate: $ret 4")
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -198,18 +140,83 @@ class CoreService : Service() {
 
     override fun onDestroy() {
         unregisterReceiver(mSmsObserver)
+        Log.i(TAG, "onDestroy: ")
         super.onDestroy()
     }
 
-    private fun updateMessage(msg: String) {
-        mHandler.post {
-            mNM.notify(
-                10086, mNotification
-                    .setTicker(msg)
-                    .setContentText(msg)
-                    .build()
-            )
+    @WorkerThread
+    private fun reportSms(server: String, from: String, message: String, to: String, pwd: String): Int {
+
+        var f = from.replace(Regex("[ \\-]"), "")
+        if (f.startsWith("+")) {
+            if (f.startsWith("+86")) {
+                f = f.substring(3)
+            } else {
+                f = f.substring(1)
+            }
         }
+        var code = -1
+        var retry = 0
+
+        do {
+            try {
+                val url = "$server/api/submitmsg/$pwd/$f/$to"
+                val conn = URL(url)
+                    .openConnection() as HttpURLConnection
+
+                conn.readTimeout = 15 * 1000
+                conn.connectTimeout = 15 * 1000
+                conn.requestMethod = "POST"
+                conn.doInput = true
+                conn.doOutput = true
+                conn.setRequestProperty("Accept-Charset", "UTF-8")
+                conn.setRequestProperty("Content-Type", "application/json")
+
+                val data = JSONObject().put("SmsMessage", message).toString().toByteArray()
+                conn.setRequestProperty("Content-Length", "" + data.size);
+
+                conn.outputStream.apply {
+                    write(data)
+                    close()
+                }
+
+                code = conn.responseCode
+                Log.i(TAG, "result: $url >> $code")
+                conn.disconnect()
+                if (code in 200..299) {
+                    mReported++
+                    AppPreferences.clear(R.string.pref_exception_key)
+                    break;
+                }
+            } catch (e: Exception) {
+                AppPreferences.putString(R.string.pref_exception_key, e.messageStack)
+            }
+        } while (retry++ < 2)
+
+        return code
+    }
+
+    private fun updateMessage(msg: String) {
+        mNM.notify(NOTIFICATION_ID, mNotification.setTicker(msg).setContentText(msg).build())
     }
 
 }
+/*
+Log.i(
+TAG, JSONObject()
+.put("originatingAddress", msg.originatingAddress)
+.put("displayOriginatingAddress", msg.displayOriginatingAddress)
+.put("messageBody", msg.messageBody)
+.put("displayMessageBody", msg.displayMessageBody)
+.put("serviceCenterAddress", msg.serviceCenterAddress)
+.put("indexOnIcc", msg.indexOnIcc)
+.put("isCphsMwiMessage", msg.isCphsMwiMessage)
+.put("isMWIClearMessage", msg.isMWIClearMessage)
+.put("isMWISetMessage", msg.isMWISetMessage)
+.put("isMwiDontStore", msg.isMwiDontStore)
+.put("isEmail", msg.isEmail)
+.put("emailFrom", msg.emailFrom)
+.put("emailBody", msg.emailBody)
+.put("isReplace", msg.isReplace)
+.toString(4)
+)*/

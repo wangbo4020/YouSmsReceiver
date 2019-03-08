@@ -9,18 +9,18 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.example.smssend.PermissionRequestDelegate
+import com.example.smssend.ui.delegate.PermissionRequestDelegate
 import com.example.smssend.R
 import com.example.smssend.background.CoreService
 import com.example.smssend.content.AppPreferences
+import com.example.smssend.utils.versionName
 import kotlinx.android.synthetic.main.activity_login.*
 
-
 /**
- * A login screen that offers login via email/password.
  */
 class LoginActivity : AppCompatActivity() {
 
+    // http://148.70.133.97
     companion object {
         const val TAG = "LoginActivity"
     }
@@ -29,11 +29,13 @@ class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(com.example.smssend.R.layout.activity_login)
+        setContentView(R.layout.activity_login)
+
         etServer.setText(AppPreferences.getString(R.string.pref_base_server_key))
         etMyPhone.setText(AppPreferences.getString(R.string.pref_my_phone_key))
         etPassword.setText(AppPreferences.getString(R.string.pref_password_key))
         tvStack.setText(AppPreferences.getString(R.string.pref_exception_key))
+        tvVersion.setText("v$versionName")
 
         etSave.setOnClickListener {
             AppPreferences.put(R.string.pref_base_server_key, etServer.text.toString())
@@ -73,7 +75,7 @@ class LoginActivity : AppCompatActivity() {
             override fun complete() {
                 startService(Intent(applicationContext, CoreService::class.java))
             }
-        }, Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS)
+        }, Manifest.permission.RECEIVE_SMS)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
