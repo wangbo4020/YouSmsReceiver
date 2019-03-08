@@ -85,9 +85,7 @@ open class PermissionRequestDelegate(val requestCode: Int, val activity: Activit
 
         permissions!!.filter {
             when (it) {
-                PERM_NOTIFICATION_ENABLE -> !isNotificationEnabled(
-                    context
-                )
+                PERM_NOTIFICATION_ENABLE -> !isNotificationEnabled(context)
                 "android.permission.PACKAGE_USAGE_STATS" -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && !isStatUsageEnabled(
                     context
                 )
