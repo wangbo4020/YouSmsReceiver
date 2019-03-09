@@ -5,13 +5,15 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.*
+import android.database.ContentObserver
+import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.provider.Telephony
 import android.telephony.SmsMessage
 import android.text.TextUtils
 import android.util.Log
-import android.widget.Toast
 import androidx.annotation.WorkerThread
 import androidx.core.app.NotificationCompat
 import com.example.smssend.R
@@ -19,13 +21,11 @@ import com.example.smssend.content.AppPreferences
 import com.example.smssend.ui.LoginActivity
 import com.example.smssend.utils.messageStack
 import com.example.smssend.utils.versionName
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
 
 
 class CoreService : Service() {
@@ -36,6 +36,7 @@ class CoreService : Service() {
     }
 
     private var mReported = 0
+    private var mReporting = 0
 
     private val mNM by lazy { getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager }
     private val mNotification by lazy {
@@ -54,6 +55,7 @@ class CoreService : Service() {
             .setOnlyAlertOnce(true)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setWhen(System.currentTimeMillis())
+            .setTicker("监听服务已启动")
             .setContentIntent(
                 PendingIntent.getActivity(
                     this,
@@ -66,11 +68,12 @@ class CoreService : Service() {
 
     }
 
-    private val mSmsObserver = object : BroadcastReceiver() {
+    private val mSmsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent?) {
             if (intent == null) return
 
             val extras = intent.extras ?: return
+//            updateMessage("已收到短信，准备上报")
 
             val smsObj = extras["pdus"] as Array<ByteArray>
             val createFromPdu = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) (extras["format"] as String).let {
@@ -84,39 +87,27 @@ class CoreService : Service() {
 
             Log.i(TAG, "onReceive: $from $text")
 
-            val server = AppPreferences.getString(R.string.pref_base_server_key)
-            val password = AppPreferences.getString(R.string.pref_password_key, "")
-            val myPhone = AppPreferences.getString(R.string.pref_my_phone_key, "")
-            if (TextUtils.isEmpty(server)) {
-                updateMessage("请正确配置上报地址")
-                return
-            }
+//                dispatchSms(from, text)
+        }
+    }
 
-            GlobalScope.launch(Dispatchers.Main) {
+    private val mSmsObserver = object : ContentObserver(Handler()) {
 
-                val code = withContext(Dispatchers.IO) { reportSms(server!!, from, text, myPhone, password) }
+        private var mLastId = 0L
+        private val sdf = SimpleDateFormat("yyyy年MM月dd日 hh时mm分ss秒");
+        override fun onChange(selfChange: Boolean) {
 
-                var suffix = "最近一条结果"
+            val map = querySmsNewest()
 
-                mNotification.setContentIntent(
-                    PendingIntent.getActivity(
-                        this@CoreService, 1,
-                        Intent.makeRestartActivityTask(
-                            ComponentName(this@CoreService, LoginActivity::class.java)
-                        ).apply {
-                            putExtra("reported", mReported)
-                            if (code == -1) {
-                                putExtra("exception", AppPreferences.getString(R.string.pref_exception_key))
-                                suffix += "异常，点我显示异常"
-                            } else {
-                                suffix += code.toString()
-                            }
-                        },
-                        0
-                    )
-                )
-                updateMessage("已上报${mReported}条，$suffix")
-            }
+            if (map.isEmpty()) return
+            val id = map["_id"]!!.toLong()
+            if (id <= mLastId) return
+            mLastId = id
+            if (selfChange) return
+
+            //格式化以秒为单位的日期
+            Log.i(TAG, "onChanged: " + sdf.format(map["date"]!!.toLong()) + ", $map")
+            dispatchSms(map["address"]!!, map["body"]!!)
         }
     }
 
@@ -124,12 +115,18 @@ class CoreService : Service() {
         super.onCreate()
 
         startForeground(NOTIFICATION_ID, mNotification.build())
-        val ret = registerReceiver(mSmsObserver, IntentFilter().apply {
+        registerReceiver(mSmsReceiver, IntentFilter().apply {
             priority = Integer.MAX_VALUE
             addAction(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
+            addAction("android.provider.OppoSpeechAssist.SMS_RECEIVED")
         })
-        Toast.makeText(this, "监听服务已开启", Toast.LENGTH_SHORT).show()
-        Log.i(TAG, "onCreate: $ret")
+        contentResolver.registerContentObserver(
+            Uri.parse("content://sms"), true, mSmsObserver.apply {
+                onChange(true)// 触发一次ID刷新
+            }
+        )
+
+        Log.i(TAG, "onCreate: ")
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -137,9 +134,56 @@ class CoreService : Service() {
     }
 
     override fun onDestroy() {
-        unregisterReceiver(mSmsObserver)
+        contentResolver.unregisterContentObserver(mSmsObserver)
+        unregisterReceiver(mSmsReceiver)
         Log.i(TAG, "onDestroy: ")
         super.onDestroy()
+    }
+
+    private fun dispatchSms(from: String, message: String) = GlobalScope.launch(Dispatchers.Main) {
+
+        val server = AppPreferences.getString(R.string.pref_base_server_key)
+        val password = AppPreferences.getString(R.string.pref_password_key, "")
+        val myPhone = AppPreferences.getString(R.string.pref_my_phone_key, "")
+        if (TextUtils.isEmpty(server)) {
+            updateMessage("请正确配置上报地址")
+            return@launch
+        }
+
+        mReporting++
+
+        updateMessage("$mReporting 条正在上报中...")
+        val code = withContext(Dispatchers.IO) {
+            delay(mReporting * 3000L)
+            reportSms(server!!, from, message, myPhone, password)
+        }
+
+        mReporting--
+
+        if (mReporting != 0) {
+            updateMessage("$mReporting 条正在上报中...")
+            return@launch
+        }
+        var suffix = "最近一条结果"
+
+        mNotification.setContentIntent(
+            PendingIntent.getActivity(
+                this@CoreService, 1,
+                Intent.makeRestartActivityTask(
+                    ComponentName(this@CoreService, LoginActivity::class.java)
+                ).apply {
+                    putExtra("reported", mReported)
+                    if (code == -1) {
+                        putExtra("exception", AppPreferences.getString(R.string.pref_exception_key))
+                        suffix += "异常，点我显示异常"
+                    } else {
+                        suffix += code.toString()
+                    }
+                },
+                0
+            )
+        )
+        updateMessage("已上报${mReported}条，$suffix")
     }
 
     @WorkerThread
@@ -192,6 +236,24 @@ class CoreService : Service() {
         } while (retry++ < 2)
 
         return code
+    }
+
+    private fun querySmsNewest(): Map<String, String> {
+
+        //查询发送向箱中的短信
+        (contentResolver.query(
+            Uri.parse(
+                "content://sms/inbox"
+            ), null, "type=? AND protocol=?", arrayOf("1", "0"), "date DESC, _id DESC LIMIT 1"
+        ) ?: return emptyMap()).use { cursor ->
+            Log.i(TAG, "querySmsNewest: " + cursor.count)
+            //遍历查询结果获取用户正在发送的短信
+            return if (cursor.moveToNext()) {
+                mapOf(*cursor.columnNames.map {
+                    it to cursor.getString(cursor.getColumnIndex(it))
+                }.toTypedArray())
+            } else emptyMap()
+        }
     }
 
     private fun updateMessage(msg: String) {

@@ -77,7 +77,7 @@ class LoginActivity : AppCompatActivity() {
             override fun complete() {
                 startService(Intent(applicationContext, CoreService::class.java))
             }
-        }, Manifest.permission.RECEIVE_SMS, PERM_NOTIFICATION_ENABLE)
+        }, Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS, PERM_NOTIFICATION_ENABLE)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
